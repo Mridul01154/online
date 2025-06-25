@@ -1,81 +1,58 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from cryptography.fernet import Fernet
-import hashlib
 import datetime
-import json
 
 app = Flask(__name__)
 CORS(app)
 
-SHARED_KEY = b'MyY0K7Ei8KZ2OJYy2AtbYe_QyKlOkJ6NmdB1zqJvraQ='
-cipher = Fernet(SHARED_KEY)
+# Stores blockchain messages
+blockchain = []
 
+# Stores registered users and their public keys (username -> PEM string)
+public_keys = {}
 
-# === Blockchain Logic ===
-class Blockchain:
-    def __init__(self):
-        self.chain = []
-        self.create_genesis_block()
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.get_json()
+    username = data.get("username")
+    public_key = data.get("public_key")
 
-    def create_genesis_block(self):
-        genesis = self.create_block("System", "Genesis Block", "0")
-        self.chain.append(genesis)
+    if not username or not public_key:
+        return jsonify({"error": "Missing username or public key"}), 400
 
-    def create_block(self, sender, message, prev_hash):
-        index = len(self.chain)
-        timestamp = str(datetime.datetime.now())
-        block_data = {
-            'index': index,
-            'timestamp': timestamp,
-            'sender': sender,
-            'message': message,
-            'previous_hash': prev_hash
-        }
-        block_data['hash'] = self.calculate_hash(block_data)
-        return block_data
+    public_keys[username] = public_key
+    return jsonify({"message": f"User '{username}' registered successfully."}), 200
 
-    def calculate_hash(self, data):
-        block_str = f"{data['index']}{data['timestamp']}{data['sender']}{data['message']}{data['previous_hash']}"
-        return hashlib.sha256(block_str.encode()).hexdigest()
-
-    def add_block(self, sender, message):
-        last_hash = self.chain[-1]['hash']
-        new_block = self.create_block(sender, message, last_hash)
-        self.chain.append(new_block)
-
-    def get_chain(self):
-        return self.chain
-
-
-blockchain = Blockchain()
-
-
-# === API Routes ===
+@app.route("/get_public_key/<username>", methods=["GET"])
+def get_public_key(username):
+    key = public_keys.get(username)
+    if not key:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({"public_key": key}), 200
 
 @app.route("/send", methods=["POST"])
 def send_message():
     data = request.get_json()
     sender = data.get("sender")
-    message = data.get("message")
+    recipient = data.get("recipient")
+    encrypted_message = data.get("encrypted_message")
 
-    if not sender or not message:
-        return jsonify({"error": "Missing sender or message"}), 400
+    if not sender or not recipient or not encrypted_message:
+        return jsonify({"error": "Missing sender, recipient, or message"}), 400
 
-    try:
-        encrypted = cipher.encrypt(message.encode()).decode()
-        blockchain.add_block(sender, encrypted)
-        return jsonify(blockchain.get_chain()), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    block = {
+        "sender": sender,
+        "recipient": recipient,
+        "encrypted_message": encrypted_message,
+        "timestamp": str(datetime.datetime.now())
+    }
+    blockchain.append(block)
 
+    return jsonify(blockchain), 200
 
 @app.route("/chain", methods=["GET"])
 def get_chain():
-    return jsonify(blockchain.get_chain()), 200
-
-
-# === Entry Point ===
+    return jsonify(blockchain), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
