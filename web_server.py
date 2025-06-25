@@ -1,16 +1,10 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from cryptography.fernet import Fernet
 import hashlib
 import datetime
-import json
 
 app = Flask(__name__)
 CORS(app)
-
-SHARED_KEY = b'MyY0K7Ei8KZ2OJYy2AtbYe_QyKlOkJ6NmdB1zqJvraQ='
-cipher = Fernet(SHARED_KEY)
-
 
 # === Blockchain Logic ===
 class Blockchain:
@@ -29,7 +23,7 @@ class Blockchain:
             'index': index,
             'timestamp': timestamp,
             'sender': sender,
-            'message': message,
+            'message': message,  # already encrypted
             'previous_hash': prev_hash
         }
         block_data['hash'] = self.calculate_hash(block_data)
@@ -47,9 +41,7 @@ class Blockchain:
     def get_chain(self):
         return self.chain
 
-
 blockchain = Blockchain()
-
 
 # === API Routes ===
 
@@ -57,25 +49,21 @@ blockchain = Blockchain()
 def send_message():
     data = request.get_json()
     sender = data.get("sender")
-    message = data.get("message")
+    message = data.get("message")  # already encrypted from client
 
     if not sender or not message:
         return jsonify({"error": "Missing sender or message"}), 400
 
     try:
-        encrypted = cipher.encrypt(message.encode()).decode()
-        blockchain.add_block(sender, encrypted)
+        blockchain.add_block(sender, message)
         return jsonify(blockchain.get_chain()), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/chain", methods=["GET"])
 def get_chain():
     return jsonify(blockchain.get_chain()), 200
 
-
 # === Entry Point ===
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
